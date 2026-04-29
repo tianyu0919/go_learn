@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人名收集器 (Web版)</title>
+    <!-- 使用 Tailwind CSS 进行现代化前端设计 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入动画库以提升交互体验 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <style>
+        /* 自定义滚动条 */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+            border-radius: 4px;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #c1c1c1; 
+            border-radius: 4px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8; 
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate__animated animate__fadeInUp">
+        <!-- 头部 -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
+            <h2 class="text-2xl font-bold flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                人名收集系统
+            </h2>
+            <p class="mt-2 text-blue-100 text-sm">支持批量粘贴导入，自动去重，每行一个名字（支持名字内带空格）</p>
+        </div>
+
+        <!-- 表单区 -->
+        <div class="p-6">
+            <div class="mb-4">
+                <label for="nameInput" class="block text-sm font-medium text-gray-700 mb-2">
+                    输入人名数据：
+                </label>
+                <div class="relative">
+                    <textarea 
+                        id="nameInput" 
+                        rows="8" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors resize-y text-gray-700"
+                        placeholder="例如：&#10;张三&#10;John Doe&#10;王五&#10;Alice Smith"
+                    ></textarea>
+                    
+                    <!-- 行数统计提示 -->
+                    <div class="absolute bottom-3 right-3 text-xs text-gray-400 pointer-events-none" id="lineCount">
+                        0 行
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex items-center justify-between mt-6">
+                <button 
+                    onclick="clearInput()" 
+                    class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400"
+                >
+                    清空输入
+                </button>
+                
+                <button 
+                    id="submitBtn"
+                    onclick="submitNames()" 
+                    class="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                    </svg>
+                    提交并保存
+                </button>
+            </div>
+
+            <!-- 状态提示 -->
+            <div id="messageBox" class="hidden mt-6 p-4 rounded-lg flex items-start gap-3 animate__animated animate__fadeIn">
+                <div id="messageIcon"></div>
+                <div id="messageText" class="text-sm font-medium"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 实时统计行数
+        const nameInput = document.getElementById('nameInput');
+        const lineCount = document.getElementById('lineCount');
+        
+        nameInput.addEventListener('input', function() {
+            const lines = this.value.split('\n').filter(line => line.trim() !== '').length;
+            lineCount.textContent = `${lines} 行`;
+        });
+
+        // 清空输入框
+        function clearInput() {
+            nameInput.value = '';
+            lineCount.textContent = '0 行';
+            hideMessage();
+        }
+
+        // 显示消息
+        function showMessage(type, title, desc) {
+            const box = document.getElementById('messageBox');
+            const icon = document.getElementById('messageIcon');
+            const text = document.getElementById('messageText');
+            
+            box.classList.remove('hidden', 'bg-green-50', 'bg-red-50', 'bg-yellow-50');
+            text.classList.remove('text-green-800', 'text-red-800', 'text-yellow-800');
+            
+            if (type === 'success') {
+                box.classList.add('bg-green-50');
+                text.classList.add('text-green-800');
+                icon.innerHTML = `<svg class="w-5 h-5 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+            } else if (type === 'error') {
+                box.classList.add('bg-red-50');
+                text.classList.add('text-red-800');
+                icon.innerHTML = `<svg class="w-5 h-5 text-red-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+            } else if (type === 'warning') {
+                box.classList.add('bg-yellow-50');
+                text.classList.add('text-yellow-800');
+                icon.innerHTML = `<svg class="w-5 h-5 text-yellow-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
+            }
+
+            text.innerHTML = `<strong class="block">${title}</strong><span class="opacity-90">${desc}</span>`;
+            
+            // 重新触发动画
+            box.classList.remove('animate__fadeIn');
+            void box.offsetWidth; // trigger reflow
+            box.classList.add('animate__fadeIn');
+        }
+
+        function hideMessage() {
+            document.getElementById('messageBox').classList.add('hidden');
+        }
+
+        // 提交数据
+        async function submitNames() {
+            const input = nameInput.value;
+            const btn = document.getElementById('submitBtn');
+            
+            if (!input.trim()) {
+                showMessage('warning', '提示', '请输入至少一个人名后再提交！');
+                return;
+            }
+
+            // 按钮进入加载状态
+            const originalBtnHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 处理中...`;
+
+            try {
+                const response = await fetch('/api/names', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ names: input })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    showMessage('error', '保存失败', data.error);
+                } else {
+                    if (data.added > 0) {
+                        showMessage('success', '保存成功！', `本次成功写入 <b>${data.added}</b> 条新记录（已自动去重），当前共 <b>${data.total}</b> 条。`);
+                        clearInput(); // 成功且有新数据时才清空
+                    } else {
+                        showMessage('warning', '没有新增数据', `您输入的名字已存在（触发去重），当前总计 <b>${data.total}</b> 条。`);
+                    }
+                }
+            } catch (err) {
+                showMessage('error', '请求异常', '无法连接到服务器，请检查 Go 后端服务是否正在运行。');
+            } finally {
+                // 恢复按钮状态
+                btn.disabled = false;
+                btn.innerHTML = originalBtnHtml;
+            }
+        }
+    </script>
+</body>
+</html>

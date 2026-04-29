@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package todo;
+
+option go_package = "go-learning/17_grpc_basics/proto";
+
+// Todo 数据模型
+message Todo {
+  int64 id = 1;
+  string title = 2;
+  bool completed = 3;
+}
+
+// 请求/响应消息
+message CreateTodoRequest {
+  string title = 1;
+}
+
+message GetTodoRequest {
+  int64 id = 1;
+}
+
+message ListTodosRequest {}
+
+message ListTodosResponse {
+  repeated Todo todos = 1;
+}
+
+message UpdateTodoRequest {
+  int64 id = 1;
+  string title = 2;
+  bool completed = 3;
+}
+
+message DeleteTodoRequest {
+  int64 id = 1;
+}
+
+message DeleteTodoResponse {
+  bool success = 1;
+}
+
+// gRPC 服务定义
+service TodoService {
+  // 一元 RPC（Unary）：最基本的请求-响应模式
+  rpc CreateTodo(CreateTodoRequest) returns (Todo);
+  rpc GetTodo(GetTodoRequest) returns (Todo);
+  rpc ListTodos(ListTodosRequest) returns (ListTodosResponse);
+  rpc UpdateTodo(UpdateTodoRequest) returns (Todo);
+  rpc DeleteTodo(DeleteTodoRequest) returns (DeleteTodoResponse);
+}

@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package microservice;
+
+option go_package = "go-learning/19_microservice/proto";
+
+// ========== User Service ==========
+
+message GetUserRequest {
+  int64 user_id = 1;
+}
+
+message ListUsersRequest {}
+
+message UserResponse {
+  int64 user_id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+message ListUsersResponse {
+  repeated UserResponse users = 1;
+}
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (UserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+
+// ========== Order Service ==========
+
+message CreateOrderRequest {
+  int64 user_id = 1;
+  string product = 2;
+  double amount = 3;
+}
+
+message GetUserOrdersRequest {
+  int64 user_id = 1;
+}
+
+message OrderResponse {
+  int64 order_id = 1;
+  int64 user_id = 2;
+  string product = 3;
+  double amount = 4;
+  string status = 5;
+  string created_at = 6;
+}
+
+message OrderListResponse {
+  repeated OrderResponse orders = 1;
+}
+
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (OrderResponse);
+  rpc GetUserOrders(GetUserOrdersRequest) returns (OrderListResponse);
+}
