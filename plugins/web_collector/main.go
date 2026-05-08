@@ -3,17 +3,27 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
-	"sync"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 )
 
-const fileName = "names.json"
-const tmpFileName = "names.json.tmp"
+var db *gorm.DB
 
-// 为了应对可能的并发请求，使用互斥锁保护文件读写
-var fileMutex sync.Mutex
+const dbDir = "db"
+const dbFile = "db/names.db"
+
+// NameRecord 是对应数据库 names 表的模型
+type NameRecord struct {
+	ID   uint   `gorm:"primaryKey"`
+	Name string `gorm:"uniqueIndex"`
+}
 
 // RequestPayload 用于解析前端传来的 JSON 数据
 type RequestPayload struct {
@@ -23,11 +33,78 @@ type RequestPayload struct {
 // ResponsePayload 用于给前端返回处理结果
 type ResponsePayload struct {
 	Added int    `json:"added"`
-	Total int    `json:"total"`
+	Total int64  `json:"total"`
 	Error string `json:"error,omitempty"`
 }
 
+func initDB() {
+	// 确保 db 目录存在
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		log.Fatalf("创建数据库目录失败: %v\n", err)
+	}
+
+	var err error
+	// 连接 SQLite 数据库，并配置 GORM 不输出普通的 SQL 执行日志
+	db, err = gorm.Open(sqlite.Open(dbFile), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		log.Fatalf("连接数据库失败: %v\n", err)
+	}
+
+	// GORM 自动迁移功能：根据 NameRecord 结构体自动创建表或修改表结构
+	if err := db.AutoMigrate(&NameRecord{}); err != nil {
+		log.Fatalf("自动迁移数据表失败: %v\n", err)
+	}
+
+	// 检查是否需要从 names.json 迁移数据
+	migrateDataFromJSON()
+}
+
+func migrateDataFromJSON() {
+	const oldFileName = "names.json"
+	data, err := os.ReadFile(oldFileName)
+	if err != nil {
+		return // 文件不存在或无法读取，跳过迁移
+	}
+
+	var names []string
+	if err := json.Unmarshal(data, &names); err != nil {
+		return // JSON 格式不正确，跳过迁移
+	}
+
+	if len(names) == 0 {
+		return
+	}
+
+	// 检查数据库中是否已有数据
+	var count int64
+	db.Model(&NameRecord{}).Count(&count)
+	if count > 0 {
+		return // 数据库已有数据，不再自动迁移
+	}
+
+	log.Printf("正在从 %s 迁移 %d 条数据到 SQLite...\n", oldFileName, len(names))
+
+	// 批量插入并忽略冲突
+	records := make([]NameRecord, 0, len(names))
+	for _, name := range names {
+		records = append(records, NameRecord{Name: name})
+	}
+
+	// 使用 GORM 的 clause.OnConflict 实现 INSERT OR IGNORE
+	result := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&records)
+	if result.Error != nil {
+		log.Printf("迁移失败: %v\n", result.Error)
+		return
+	}
+
+	log.Printf("迁移完成，成功导入 %d 条数据。\n", result.RowsAffected)
+}
+
 func main() {
+	initDB()
+
 	// 静态文件服务：直接响应 index.html
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "index.html")
@@ -55,66 +132,42 @@ func handleNames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 保证读写文件和处理的原子性
-	fileMutex.Lock()
-	defer fileMutex.Unlock()
-
-	var names []string
-	seen := make(map[string]struct{})
-
-	// 读取历史数据并建立去重 map
-	data, err := os.ReadFile(fileName)
-	if err == nil && len(data) > 0 {
-		err = json.Unmarshal(data, &names)
-		if err == nil {
-			for _, name := range names {
-				seen[name] = struct{}{}
-			}
-		}
-	}
-
-	// 使用换行符分割字符串
 	lines := strings.Split(payload.Names, "\n")
-	addedCount := 0
+	var records []NameRecord
 
+	// 清洗数据并封装到 struct
 	for _, line := range lines {
-		// 去除首尾的空白字符（比如 \r 或者多余空格），但保留中间的空格
 		line = strings.TrimSpace(line)
 		if line != "" {
-			// 去重逻辑
-			if _, exists := seen[line]; !exists {
-				seen[line] = struct{}{}
-				names = append(names, line)
-				addedCount++
-			}
+			records = append(records, NameRecord{Name: line})
 		}
 	}
 
-	// 如果有新数据，则写入 JSON 文件
-	if addedCount > 0 {
-		fileData, err := json.MarshalIndent(names, "", "  ")
-		if err != nil {
-			sendJSON(w, ResponsePayload{Error: "生成 JSON 失败"}, http.StatusInternalServerError)
-			return
-		}
+	addedCount := int64(0)
+	if len(records) > 0 {
+		// 使用 GORM 的 Create 批量插入，并遇到冲突自动忽略
+		result := db.Clauses(clause.OnConflict{
+			DoNothing: true,
+		}).Create(&records)
 
-		// 原子写入策略
-		err = os.WriteFile(tmpFileName, fileData, 0644)
-		if err != nil {
-			sendJSON(w, ResponsePayload{Error: "写入临时文件失败"}, http.StatusInternalServerError)
+		if result.Error != nil {
+			sendJSON(w, ResponsePayload{Error: "执行插入失败"}, http.StatusInternalServerError)
 			return
 		}
-		err = os.Rename(tmpFileName, fileName)
-		if err != nil {
-			sendJSON(w, ResponsePayload{Error: "保存文件失败"}, http.StatusInternalServerError)
-			return
-		}
+		addedCount = result.RowsAffected
+	}
+
+	// 查询当前总数
+	var total int64
+	if err := db.Model(&NameRecord{}).Count(&total).Error; err != nil {
+		sendJSON(w, ResponsePayload{Error: "查询总数失败"}, http.StatusInternalServerError)
+		return
 	}
 
 	// 成功响应，返回当前新增数和总数
 	sendJSON(w, ResponsePayload{
-		Added: addedCount,
-		Total: len(names),
+		Added: int(addedCount),
+		Total: total,
 	}, http.StatusOK)
 }
 
