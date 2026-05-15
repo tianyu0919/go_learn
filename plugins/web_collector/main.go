@@ -25,6 +25,11 @@ type NameRecord struct {
 	Name string `gorm:"uniqueIndex"`
 }
 
+// 加上这个方法，GORM 就会乖乖把表明设为 names
+func (n *NameRecord) TableName() string {
+	return "names"
+}
+
 // RequestPayload 用于解析前端传来的 JSON 数据
 type RequestPayload struct {
 	Names string `json:"names"`
